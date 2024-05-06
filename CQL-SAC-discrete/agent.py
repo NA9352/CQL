@@ -130,18 +130,18 @@ class CQLSAC(nn.Module):
             Q_target_next = action_probs * (torch.min(Q_target1_next, Q_target2_next) - self.alpha.to(self.device) * log_pis)
 
             # Compute Q targets for current states (y_i)
-            Q_targets = rewards + (gamma * (1 - dones) * Q_target_next.sum(dim=1).unsqueeze(-1)) 
+            Q_targets = rewards + (gamma * (1 - dones) * Q_target_next.sum(dim=2)) #Nikita - dim=1/.unsqueeze(-1)) 
 
 
         # Compute critic loss
         q1 = self.critic1(states)
         q2 = self.critic2(states)
         
-        q1_ = q1.gather(1, actions.long())
-        q2_ = q2.gather(1, actions.long())
+        q1_ = q1.gather(1, actions.unsqueeze(-1).long()) #nikita added .unsqueeze(-1)
+        q2_ = q2.gather(1, actions.unsqueeze(-1).long())
         
-        critic1_loss = 0.5 * F.mse_loss(q1_, Q_targets)
-        critic2_loss = 0.5 * F.mse_loss(q2_, Q_targets)
+        critic1_loss = 0.5 * F.mse_loss(q1_, Q_targets.unsqueeze(-1))
+        critic2_loss = 0.5 * F.mse_loss(q2_, Q_targets.unsqueeze(-1))
         
         cql1_scaled_loss = torch.logsumexp(q1, dim=1).mean() - q1.mean()
         cql2_scaled_loss = torch.logsumexp(q2, dim=1).mean() - q2.mean()
@@ -162,14 +162,18 @@ class CQLSAC(nn.Module):
         total_c2_loss = critic2_loss + cql2_scaled_loss
         
         
+        
         # Update critics
         # critic 1
         self.critic1_optimizer.zero_grad()
+        total_c1_loss = total_c1_loss.to(torch.float32)
         total_c1_loss.backward(retain_graph=True)
         clip_grad_norm_(self.critic1.parameters(), self.clip_grad_param)
         self.critic1_optimizer.step()
+
         # critic 2
         self.critic2_optimizer.zero_grad()
+        total_c2_loss = total_c2_loss.float()
         total_c2_loss.backward()
         clip_grad_norm_(self.critic2.parameters(), self.clip_grad_param)
         self.critic2_optimizer.step()
